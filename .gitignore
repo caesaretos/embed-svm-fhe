@@ -1,0 +1,9 @@
+build/
+.idea
+cmake-build-debug
+results*
+
+.ipynb_checkpoints
+
+# Visual Studio Code
+.vscode
