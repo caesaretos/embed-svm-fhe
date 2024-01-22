@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 17)
 # make sure you have OpenFHE v1.1.2 installed in the path below
 # find_package(OpenFHE 1.1.0 EXACT REQUIRED PATHS ../../myinstalls/)
 set(CMAKE_FIND_ROOT_PATH ~/development/personal/myinstalls)
-find_package(OpenFHE 1.1.0 EXACT REQUIRED PATHS ~/development/personal/myinstalls/ NO_DEFAULT_PATHS)
+find_package(OpenFHE 1.1.2 EXACT REQUIRED PATHS ~/development/personal/myinstalls/ NO_DEFAULT_PATHS)
 
 if(NOT OpenFHE_FOUND)
     message(FATAL_ERROR "OpenFHE library not found at the specified path.")
