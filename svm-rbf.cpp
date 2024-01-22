@@ -179,6 +179,8 @@ int main() {
     resize_double_vector(y_ground_truth, n);
     vector<double> y_expected_score = read_double_data_from_file(DATA_FOLDER + "yclassificationscore.txt");
     resize_double_vector(y_expected_score, n);
+    vector<double> y_expected_class = read_double_data_from_file(DATA_FOLDER + "ytest_rbf.txt");
+    resize_double_vector(y_expected_class, 1);
     
     print_double_vector_comma_separated(dual_coeffs, "dual_coeff");
     print_double_vector_comma_separated(bias, "bias");
@@ -187,7 +189,7 @@ int main() {
     print_double_vector_comma_separated(y_expected_score, "y_expected_score");
 
     // Step 1: Setup CryptoContext
-    uint32_t multDepth = 9;
+    uint32_t multDepth = 9 + 5;
     uint32_t scaleModSize = 59;
     uint32_t firstModSize = 60;
     uint32_t batchSize = n;
@@ -276,8 +278,8 @@ int main() {
 
     // Step 4: Evaluation
     std::cout << "Evaluation started ... \n\n";
-    TimeVar t;
-    TIC(t);
+    TimeVar t_decision_function;
+    TIC(t_decision_function);
     // do first vector here
 
     // auto ct_prod = cc->EvalMult(ct_x, pt_support_vectors);   
@@ -302,26 +304,33 @@ int main() {
     ct_out = cc->EvalMult(ct_out, pt_dual_coeffs);
     // decrypt_and_print(ct_out, "exp*dual_coeff");
     
-    
     // check every n coeff
     auto ct_res = cc->EvalSum(ct_out, (1<<15));
     // auto ct_res = total_sum(ct_out, next_power_of_2(n*n_SVs));
 
-
     // decrypt_and_print(ct_res, "sum(exp*dual_coeff)");
-    ct_res = cc->EvalAdd(ct_res, pt_bias);
+    ct_out = cc->EvalAdd(ct_res, pt_bias);
     // decrypt_and_print(ct_res, "sum(exp*dual_coeff) + bias");
-    auto timeEvalSVMTime = TOC_MS(t);
+    auto timeEvalDFTime = TOC_MS(t_decision_function);
     
-    std::cout << "Evalaution done\n";
+    std::cout << "Decision function evalaution done\n";
+    std::cout << "SVM decision function evalaution took: " << timeEvalDFTime << " ms\n\n"; 
 
-    std::cout << "Linear-SVM inference took: " << timeEvalSVMTime << " ms\n\n"; 
+    TimeVar t_sign;
+    TIC(t_sign);
+    ct_res = cc->EvalChebyshevFunction([](double y) -> double { return (y >= 0) ? 1 : 0; }, ct_res, lowerBound,
+                                        upperBound, polyDegree);
+    auto timeEvalSignTime = TOC_MS(t_sign);
+    
+    std::cout << "Sign function evalaution done\n";
+    std::cout << "Sign function evaluation took: " << timeEvalSignTime << " ms\n\n";
+    std::cout << "SVM Inference total evaluation time: " << (timeEvalDFTime+timeEvalSignTime) << " ms\n\n";
 
     cout << "num levels in output ctxt: " << ct_res->GetLevel() << "\n";
     cout << "num towers in output ctxt: " << ct_res->GetElements()[0].GetAllElements().size() << endl;
 
     // Step 5: Decryption and output
-    Plaintext result;
+    Plaintext result_class_score, result_class;
     // We set the cout precision to 8 decimal digits for a nicer output.
     // If you want to see the error/noise introduced by CKKS, bump it up
     // to 15 and it should become visible.
@@ -329,13 +338,17 @@ int main() {
 
     cout << endl << "Results of homomorphic computations: " << endl;
 
-    cc->Decrypt(keys.secretKey, ct_res, &result);
-    result->SetLength(batchSize);
-    cout << "computed classification score = " << result;
-    cout << "Estimated precision in bits: " << result->GetLogPrecision() << endl;
+    cc->Decrypt(keys.secretKey, ct_out, &result_class_score);
+    cc->Decrypt(keys.secretKey, ct_res, &result_class);
+    result_class_score->SetLength(batchSize);
+    result_class->SetLength(batchSize);
+    cout << "computed classification score = " << result_class_score->GetRealPackedValue()[0] << "\n";
+    y_expected_score.resize(1);
     print_double_vector_comma_separated(y_expected_score, "y_expected_score");
+    cout << "computed classification class = " << result_class->GetRealPackedValue()[0] << "\n";
+    print_double_vector_comma_separated(y_expected_class, "y_expected_class");
 
-    cout << "FHE EMBED SVM RBF Kernel terminated gracefully ... !\n";
+    cout << "\n FHE EMBED SVM RBF Kernel terminated gracefully ... !\n";
 
     return 0;
 }
